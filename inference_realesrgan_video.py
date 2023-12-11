@@ -65,10 +65,17 @@ class Reader:
         self.input_fps = None
         if self.input_type.startswith('video'):
             video_path = get_sub_video(args, total_workers, worker_idx)
+            ffmpeg_input_args = {
+                'c:v': 'h264_cuvid',
+            }
+            ffmpeg_output_args = {
+                'format': 'rawvideo',
+                'pix_fmt': 'bgr24',
+                'loglevel': 'error'
+            }
             self.stream_reader = (
-                ffmpeg.input(video_path).output('pipe:', format='rawvideo', pix_fmt='bgr24',
-                                                loglevel='error').run_async(
-                                                    pipe_stdin=True, pipe_stdout=True, cmd=args.ffmpeg_bin))
+                ffmpeg.input(video_path, **ffmpeg_input_args).output('pipe:', **ffmpeg_output_args).run_async(
+                    pipe_stdin=True, pipe_stdout=True, cmd=args.ffmpeg_bin))
             meta = get_video_meta_info(video_path)
             self.width = meta['width']
             self.height = meta['height']
@@ -143,16 +150,24 @@ class Writer:
                   'We highly recommend to decrease the outscale(aka, -s).')
 
         if audio is not None:
+            ffmpeg_input_args = {
+                'format': 'rawvideo',
+                'pix_fmt': 'bgr24',
+                's': f'{out_width}x{out_height}',
+                'framerate': fps
+            }
+            ffmpeg_output_args = {
+                'pix_fmt': 'yuv420p',
+                'c:v': 'h264_nvenc',
+                'loglevel': 'error',
+                'acodec': 'copy'
+            }
             self.stream_writer = (
-                ffmpeg.input('pipe:', format='rawvideo', pix_fmt='bgr24', s=f'{out_width}x{out_height}',
-                             framerate=fps).output(
-                                 audio,
-                                 video_save_path,
-                                 pix_fmt='yuv420p',
-                                 vcodec='libx264',
-                                 loglevel='error',
-                                 acodec='copy').overwrite_output().run_async(
-                                     pipe_stdin=True, pipe_stdout=True, cmd=args.ffmpeg_bin))
+                ffmpeg.input('pipe:', **ffmpeg_input_args).output(
+                    audio,
+                    video_save_path,
+                    **ffmpeg_output_args).overwrite_output().run_async(
+                    pipe_stdin=True, pipe_stdout=True, cmd=args.ffmpeg_bin))
         else:
             self.stream_writer = (
                 ffmpeg.input('pipe:', format='rawvideo', pix_fmt='bgr24', s=f'{out_width}x{out_height}',
